@@ -76,84 +76,92 @@ func (s *Scheduler) UpdateJobs() {
 	s.cron.Start()
 }
 
-// processApp 处理单个应用的日志
-func processApp(app common.App) {
-	// 检查目标目录大小
-	output, err := RunShellCommand("du", "-s", common.CONFIG.Global.TargetDir)
+// checkDirectorySize 检查目录大小并返回大小（GB）
+func checkDirectorySize(dirPath string) (float64, error) {
+	output, err := RunShellCommand("du", "-s", dirPath)
 	if err != nil {
-		fmt.Printf("Failed to check target directory size: %v\n", err)
-		return
+		return 0, fmt.Errorf("failed to check directory size: %v", err)
 	}
 
-	// 解析du命令输出，获取目录大小（单位：KB）
 	var size int64
 	_, err = fmt.Sscanf(output, "%d", &size)
 	if err != nil {
-		fmt.Printf("Failed to parse directory size: %v\n", err)
-		return
+		return 0, fmt.Errorf("failed to parse directory size: %v", err)
 	}
 
-	// 将KB转换为GB
-	sizeGB := float64(size) / (1024 * 1024)
+	return float64(size) / (1024 * 1024), nil
+}
+
+// cleanDirectory 清理指定目录中超过指定天数的文件
+func cleanDirectory(dirPath string, days string) error {
+	_, err := RunShellCommand("find", dirPath, "-type", "d", "-mtime", "+"+days, "-exec", "rm", "-rf", "{}", "+")
+	return err
+}
+
+// processApp 处理单个应用的日志
+func processApp(app common.App) {
+	// 检查目标目录大小
+	sizeGB, err := checkDirectorySize(common.CONFIG.Global.TargetDir)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
 
 	// 检查是否超过阈值
 	if sizeGB >= float64(common.CONFIG.Global.MaxSize) {
 		fmt.Printf("Target directory size (%.2f GB) exceeds the limit (%d GB)\n", sizeGB, common.CONFIG.Global.MaxSize)
-		if common.CONFIG.Global.CleanAuto {
-			// 清理指定天数前的日志
-			if _, err := RunShellCommand("find", common.CONFIG.Global.TargetDir, "-type", "d", "-mtime", "+"+common.CONFIG.Global.MaxSaveDuration, "-exec", "rm", "-rf", "{}", "+"); err != nil {
-				fmt.Printf("Failed to clean target directory: %v\n", err)
-				return
-			}
-			output, err := RunShellCommand("du", "-s", common.CONFIG.Global.TargetDir)
-			if err!= nil {
-				fmt.Printf("Failed to check target directory size: %v\n", err)
-				return
-			}
-			_, err = fmt.Sscanf(output, "%d", &size)
-			if err!= nil {
-				fmt.Printf("Failed to parse directory size: %v\n", err)
-				return
-			}
-			sizeGB = float64(size) / (1024 * 1024)
-			fmt.Printf("Target directory size (%.2f GB) after clean\n", sizeGB)
-			if sizeGB >= float64(common.CONFIG.Global.MaxSize) {
-				fmt.Printf("Target directory size (%.2f GB) exceeds the limit (%d GB)\n", sizeGB, common.CONFIG.Global.MaxSize)
-				if _, err := RunShellCommand("find", common.CONFIG.Global.TargetDir, "-type", "d", "-mtime", "+"+common.CONFIG.Global.MinSaveDuration, "-exec", "rm", "-rf", "{}", "+"); err!= nil {
-					fmt.Printf("Failed to clean target directory: %v\n", err)
-					return
-				}
-			}else{
-				fmt.Println("Clean target directory successfully")
-				return
-			}
-			fmt.Println("Clean target directory successfully")
-			return
-		} else {
+		if !common.CONFIG.Global.CleanAuto {
 			fmt.Println("Clean auto is false, please clean the target directory manually")
 			return
 		}
+
+		// 首先尝试清理超过MaxSaveDuration天数的文件
+		if err := cleanDirectory(common.CONFIG.Global.TargetDir, common.CONFIG.Global.MaxSaveDuration); err != nil {
+			fmt.Printf("Failed to clean target directory: %v\n", err)
+			return
+		}
+
+		// 检查清理后的目录大小
+		sizeGB, err = checkDirectorySize(common.CONFIG.Global.TargetDir)
+		if err != nil {
+			fmt.Printf("%v\n", err)
+			return
+		}
+		fmt.Printf("Target directory size (%.2f GB) after initial clean\n", sizeGB)
+
+		// 如果仍然超过阈值，尝试清理超过MinSaveDuration天数的文件
+		if sizeGB >= float64(common.CONFIG.Global.MaxSize) {
+			fmt.Printf("Target directory size still exceeds the limit, performing deeper clean...\n")
+			if err := cleanDirectory(common.CONFIG.Global.TargetDir, common.CONFIG.Global.MinSaveDuration); err != nil {
+				fmt.Printf("Failed to perform deeper clean: %v\n", err)
+				return
+			}
+		}
+		fmt.Println("Clean target directory successfully")
+		return
 	}
 
+	// 创建新的日志目录
 	DateTimeStr := time.Now().Format("2006-01-02_15-04-05")
 	logDir := fmt.Sprintf("%s/%s/%s", common.CONFIG.Global.TargetDir, DateTimeStr, app.Name)
 
-	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(logDir, 0755); err != nil {
-			fmt.Printf("Failed to create log directory for app %s: %v\n", app.Name, err)
-			return
-		}
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		fmt.Printf("Failed to create log directory for app %s: %v\n", app.Name, err)
+		return
 	}
 
+	// 拷贝日志文件
 	for _, logFile := range app.LogFiles {
 		logFilePath := fmt.Sprintf("%s/%s", app.LogDir, logFile)
-		// 拷贝日志文件
 		if _, err := RunShellCommand("cp", "-r", logFilePath, logDir); err != nil {
 			fmt.Printf("Failed to copy log file for app %s: %v\n", app.Name, err)
 			return
 		}
 		if app.EmptyOrigin {
-			RunShellCommand("echo", "' '", ">", logFilePath)
+			// 使用更安全的方式清空原始日志文件
+			if _, err := RunShellCommand("truncate", "-s", "0", logFilePath); err != nil {
+				fmt.Printf("Failed to empty log file %s: %v\n", logFilePath, err)
+			}
 		}
 	}
 }
