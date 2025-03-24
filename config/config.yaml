@@ -1,0 +1,27 @@
+global:
+  # 目标目录
+  target_dir: ""
+  # 目标目录最大大小，单位GB
+  max_size: 2
+  # 目标目录最大保存时间，单位天
+  max_save_duration: 10
+
+  
+
+# 应用列表
+apps:
+  # 应用名称
+  - name: ""
+    # 应用日志目录
+    log_dir: ""
+    # 应用日志文件
+    log_files: 
+      - ""
+    # 清空原始日志
+    empty_origin: true
+    # 执行时间
+    exec_time:
+      # 时区
+      time_zone: "Asia/Shanghai"
+      # 开始时间
+      start_time: "00:01"
