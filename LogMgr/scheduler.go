@@ -78,6 +78,63 @@ func (s *Scheduler) UpdateJobs() {
 
 // processApp 处理单个应用的日志
 func processApp(app common.App) {
+	// 检查目标目录大小
+	output, err := RunShellCommand("du", "-s", common.CONFIG.Global.TargetDir)
+	if err != nil {
+		fmt.Printf("Failed to check target directory size: %v\n", err)
+		return
+	}
+
+	// 解析du命令输出，获取目录大小（单位：KB）
+	var size int64
+	_, err = fmt.Sscanf(output, "%d", &size)
+	if err != nil {
+		fmt.Printf("Failed to parse directory size: %v\n", err)
+		return
+	}
+
+	// 将KB转换为GB
+	sizeGB := float64(size) / (1024 * 1024)
+
+	// 检查是否超过阈值
+	if sizeGB >= float64(common.CONFIG.Global.MaxSize) {
+		fmt.Printf("Target directory size (%.2f GB) exceeds the limit (%d GB)\n", sizeGB, common.CONFIG.Global.MaxSize)
+		if common.CONFIG.Global.CleanAuto {
+			// 清理指定天数前的日志
+			if _, err := RunShellCommand("find", common.CONFIG.Global.TargetDir, "-type", "d", "-mtime", "+"+common.CONFIG.Global.MaxSaveDuration, "-exec", "rm", "-rf", "{}", "+"); err != nil {
+				fmt.Printf("Failed to clean target directory: %v\n", err)
+				return
+			}
+			output, err := RunShellCommand("du", "-s", common.CONFIG.Global.TargetDir)
+			if err!= nil {
+				fmt.Printf("Failed to check target directory size: %v\n", err)
+				return
+			}
+			_, err = fmt.Sscanf(output, "%d", &size)
+			if err!= nil {
+				fmt.Printf("Failed to parse directory size: %v\n", err)
+				return
+			}
+			sizeGB = float64(size) / (1024 * 1024)
+			fmt.Printf("Target directory size (%.2f GB) after clean\n", sizeGB)
+			if sizeGB >= float64(common.CONFIG.Global.MaxSize) {
+				fmt.Printf("Target directory size (%.2f GB) exceeds the limit (%d GB)\n", sizeGB, common.CONFIG.Global.MaxSize)
+				if _, err := RunShellCommand("find", common.CONFIG.Global.TargetDir, "-type", "d", "-mtime", "+"+common.CONFIG.Global.MinSaveDuration, "-exec", "rm", "-rf", "{}", "+"); err!= nil {
+					fmt.Printf("Failed to clean target directory: %v\n", err)
+					return
+				}
+			}else{
+				fmt.Println("Clean target directory successfully")
+				return
+			}
+			fmt.Println("Clean target directory successfully")
+			return
+		} else {
+			fmt.Println("Clean auto is false, please clean the target directory manually")
+			return
+		}
+	}
+
 	DateTimeStr := time.Now().Format("2006-01-02_15-04-05")
 	logDir := fmt.Sprintf("%s/%s/%s", common.CONFIG.Global.TargetDir, DateTimeStr, app.Name)
 
@@ -91,7 +148,7 @@ func processApp(app common.App) {
 	for _, logFile := range app.LogFiles {
 		logFilePath := fmt.Sprintf("%s/%s", app.LogDir, logFile)
 		// 拷贝日志文件
-		if err := RunShellCommand("cp", "-r", logFilePath, logDir); err != nil {
+		if _, err := RunShellCommand("cp", "-r", logFilePath, logDir); err != nil {
 			fmt.Printf("Failed to copy log file for app %s: %v\n", app.Name, err)
 			return
 		}

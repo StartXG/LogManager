@@ -9,6 +9,8 @@ type Global struct {
 	TargetDir       string `yaml:"target_dir"`
 	MaxSize         int64  `yaml:"max_size"`
 	MaxSaveDuration string `yaml:"max_save_duration"`
+	MinSaveDuration string `yaml:"min_save_duration"`
+	CleanAuto       bool   `yaml:"clean_auto"`
 }
 
 type ExecTime struct {

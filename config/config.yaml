@@ -5,6 +5,10 @@ global:
   max_size: 2
   # 目标目录最大保存时间，单位天
   max_save_duration: 10
+  # 目标目录最小保存时间，单位天
+  min_save_duration: 3
+  # 自动清理
+  clean_auto: true
 
   
 

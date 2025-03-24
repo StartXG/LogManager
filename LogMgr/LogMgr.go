@@ -2,16 +2,23 @@ package logmgr
 
 import (
 	"LogManager/common"
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 )
 
-func RunShellCommand(name string, args ...string) error {
-	cmd := exec.Command(name, args...) // 创建命令
-	cmd.Stdout = os.Stdout             // 标准输出
-	cmd.Stderr = os.Stderr             // 标准错误输出
-	return cmd.Run()                   // 执行命令
+func RunShellCommand(name string, args ...string) (string, error) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("%v: %s", err, stderr.String())
+	}
+	return stdout.String(), nil
 }
 
 func Run() {
