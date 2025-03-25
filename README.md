@@ -10,6 +10,47 @@
 - [x] 灵活的日志目录配置
 - [x] 可设置存储空间上限
 
+## 开发说明
+
+### 项目结构
+
+```
+LogManager/
+├── cmd/                # 命令行工具
+│   ├── command/       # 命令实现
+│   └── main.go        # 程序入口
+├── common/            # 公共组件
+│   ├── common.go      # 通用工具函数
+│   ├── config_manager.go  # 配置管理
+│   └── models.go      # 数据模型
+├── LogMgr/            # 核心功能
+│   ├── LogMgr.go      # 日志管理器
+│   └── scheduler.go   # 调度器
+├── config/            # 配置文件
+└── README.md          # 项目文档
+```
+
+### 开发环境配置
+
+1. 安装Go开发环境（1.23+）
+2. 克隆项目代码
+3. 安装依赖：
+   ```bash
+   go mod tidy
+   ```
+
+### 构建和测试
+
+1. 构建项目：
+   ```bash
+   go build -o logmanager cmd/main.go
+   ```
+
+2. 运行测试：
+   ```bash
+   go test ./...
+   ```
+
 ## 配置说明
 
 配置文件位于 `config/config.yaml`，支持以下配置项：
@@ -24,6 +65,10 @@ global:
   max_size: 2
   # 日志最大保存时间（单位：天）
   max_save_duration: 10
+  # 日志最小保存时间（单位：天）
+  min_save_duration: 3
+  # 是否启用自动清理
+  clean_auto: true
 ```
 
 ### 应用配置
@@ -61,6 +106,8 @@ apps:
 2. 建议将 `target_dir` 设置在空间充足的磁盘分区
 3. 合理设置 `max_size` 和 `max_save_duration` 避免磁盘空间耗尽
 4. 建议将日志压缩任务设置在系统负载较低的时间段
+5. 系统会自动检查目录大小，当超过设定值时触发清理
+6. 清理策略会优先保留最新的日志，同时确保日志至少保存 `min_save_duration` 天
 
 ## 开发环境
 
